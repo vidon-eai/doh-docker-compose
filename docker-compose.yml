@@ -1,0 +1,141 @@
+version: "3.8"
+name: develop
+services:
+  admin-dashboard-dev:
+    image: doh-web-service-dev:latest
+    container_name: admin-dashboard-dev
+    build:
+      context: ./admin-dashboard
+      dockerfile: Dockerfile
+      args:
+        BASE_HREF: "/"
+        CONFIGURATION: "dev"
+        PORT: 4000
+    ports:
+      - "4000:4000"
+    develop:
+      watch:
+        - action: sync
+          path: ./admin-dashboard
+          target: /app
+  admin-dashboard-staging:
+    image: doh-admin-dashboard-staging:latest
+    container_name: doh-admin-dashboard-staging
+    build:
+      context: ./admin-dashboard
+      dockerfile: Dockerfile
+      args:
+        BASE_HREF: "/"
+        CONFIGURATION: "staging"
+        PORT: 4100
+    ports:
+      - "4100:4100"
+    networks:
+      - app-network
+  web-service-dev:
+    image: doh-web-service-dev
+    container_name: web-service-dev
+    build:
+      context: ./web-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./web-service/.env.development
+    develop:
+      watch:
+        - action: sync
+          path: ./web-service
+          target: /app
+    volumes:
+      - ./web-service:/app
+      - ./storage:/app/storage
+      - /app/node_modules
+    restart: unless-stopped
+    ports:
+      - "5000:5000" # Map host port 5000 to container port 5000
+    networks:
+      - app-network
+    depends_on:
+      - mysql-dev
+  web-service-staging:
+    image: doh-web-service-staging
+    container_name: web-service-staging
+    build:
+      context: ./web-service
+      dockerfile: Dockerfile
+      args:
+        - PORT=5100
+        - CONFIGURATION=staging
+    env_file:
+      - ./web-service/.env.staging
+    volumes:
+      - /data1/projects/dh/STORAGE:/app/storage
+    restart: unless-stopped
+    ports:
+      - "5100:5100" # Map host port 5000 to container port 5000
+    networks:
+      - app-network
+    depends_on:
+      mysql-staging:
+        condition: service_healthy
+  mysql-dev:
+    image: mysql:latest
+    container_name: db-dev # Optional: Assign a custom name to the container
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password # Set the root password for MySQL
+      MYSQL_DATABASE: doh # Optional: Create a default database
+      MYSQL_USER: user # Optional: Create a new user
+      MYSQL_PASSWORD: password # Optional: Set password for the new user
+    ports:
+      - "3306:3306" # Map host port 3306 to container port 3306
+    volumes:
+      - mysql_data_dev:/var/lib/mysql # Persist data to a named volume
+    restart: always # Restart the container automatically if it stops
+    networks:
+      - app-network
+  mysql-staging:
+    image: mysql:8.0
+    container_name: db-staging # Optional: Assign a custom name to the container
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password # Set the root password for MySQL
+      MYSQL_DATABASE: ai_meeting_minutes # Optional: Create a default database
+      MYSQL_USER: user # Optional: Create a new user
+      MYSQL_PASSWORD: password # Optional: Set password for the new user
+    ports:
+      - "5506:3306" # Map host port 3306 to container port 3306
+    volumes:
+      - mysql_data_staging:/var/lib/mysql # Persist data to a named volume
+    restart: always # Restart the container automatically if it stops
+    networks:
+      - app-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p$$MYSQL_ROOT_PASSWORD",
+        ]
+      timeout: 20s
+      retries: 10
+      start_period: 30s
+      interval: 10s
+  nginx:
+    image: nginx:latest
+    container_name: doh-nginx
+    ports:
+      - "8080:8080" # Staging
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+    networks:
+      - app-network
+volumes:
+  mysql_data_dev: # Define the named volume for data persistence
+  mysql_data_staging: # Define the named volume for data persistence
+
+networks:
+  app-network:
+    driver: bridge
