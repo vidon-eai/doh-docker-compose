@@ -3,7 +3,7 @@ name: app
 services:
   # ==================== ADMIN DASHBOARD ====================
   admin-dashboard-uat:
-    image: doh-admin-dashboard:v1.02
+    image: doh-admin-dashboard-uat:v1.0.1
     container_name: doh-admin-dashboard-uat
     build:
       context: ./admin-dashboard
@@ -11,13 +11,12 @@ services:
       args:
         BASE_HREF: "/"
         CONFIGURATION: "uat"
-        PORT: 4001
     ports:
       - "4001:4001"
     networks:
       - app-network
   admin-dashboard-prod:
-    image: doh-admin-dashboard:v1.02
+    image: doh-admin-dashboard-prod:v1.0.1
     container_name: doh-admin-dashboard-prod
     build:
       context: ./admin-dashboard
@@ -32,7 +31,7 @@ services:
       - app-network
   # ==================== WEB SERVICE (API) ====================
   web-service-uat:
-    image: doh-web-service:v1.02
+    image: doh-web-service-uat:v1.0.1
     container_name: doh-web-service-uat
     build:
       context: ./web-service
@@ -43,8 +42,8 @@ services:
     env_file:
       - ./web-service/.env.uat
     volumes:
-      - /home/doh/STORAGE/uat:/app/STORAGE
-      - /home/doh/docker/app/email-templates:/app/public/email-templates/custom
+      - /data/App_STOR/uat:/app/STORAGE
+      - /home/doh/docker/app/email-templates/uat:/app/public/email-templates/custom
     ports:
       - "5001:5001"
     networks:
@@ -54,8 +53,14 @@ services:
     depends_on:
       mysql-uat:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://web-service-uat:5001/api/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
   web-service-prod:
-    image: doh-web-service:v1.02
+    image: doh-web-service-prod:v1.0.1
     container_name: doh-web-service-prod
     build:
       context: ./web-service
@@ -64,12 +69,12 @@ services:
         - PORT=5002
         - CONFIGURATION=prod
     env_file:
-      - ./web-service/.env.production
+      - ./web-service/.env.prod
     environment:
       - PORT=5002
     volumes:
-      - /home/doh/STORAGE/prod:/app/STORAGE
-      - /home/doh/docker/app/email-templates:/app/public/email-templates/custom
+      - /data/App_STOR/prod:/app/STORAGE
+      - /home/doh/docker/app/email-templates/prod:/app/public/email-templates/custom
     ports:
       - "5002:5002"
     networks:
@@ -79,9 +84,15 @@ services:
     depends_on:
       mysql-prod:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://web-service-prod:5002/api/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
   # ==================== MYSQL ====================      
   mysql-uat:
-    image: mysql:latest
+    image: mysql:8.0
     container_name: db-uat
     environment:
       MYSQL_ROOT_PASSWORD: root_password
@@ -102,7 +113,7 @@ services:
       start_period: 30s
       interval: 10s
   mysql-prod:
-    image: mysql:latest
+    image: mysql:8.0
     container_name: db-prod
     environment:
       MYSQL_ROOT_PASSWORD: root_password
@@ -138,10 +149,14 @@ services:
       - app-network
       - macvlan-network
     depends_on:
-      - admin-dashboard-uat
-      - admin-dashboard-prod
-      - web-service-uat
-      - web-service-prod
+      web-service-uat:
+        condition: service_healthy
+      web-service-prod:
+        condition: service_healthy
+      admin-dashboard-uat:
+        condition: service_started
+      admin-dashboard-prod:
+        condition: service_started
 # ==================== VOLUMES ====================
 volumes:
   mysql_data_uat:
